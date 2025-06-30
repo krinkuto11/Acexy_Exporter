@@ -1,84 +1,97 @@
 import time
 import re
 import requests
+import os
 from prometheus_client import start_http_server, Gauge
 from collections import defaultdict
-import os
 
-MTAIL_METRICS_URL = os.environ.get("MTAIL_METRICS_URL","http://localhost:3903/metrics")
-CHANNEL_LOOKUP_URL = os.environ.get("CHANNEL_LOOKUP_URL",   "http://192.168.20.3:8000/api/tv-channels/find-matches")
+MTAIL_METRICS_URL = os.environ.get("MTAIL_METRICS_URL", "http://localhost:3903/metrics")
+CHANNELS_URL = os.environ.get("CHANNELS_URL", "http://192.168.20.3:8000/api/tv-channels/")
+ACESTREAMS_URL_TEMPLATE = os.environ.get("ACESTREAMS_URL_TEMPLATE", "http://192.168.20.3:8000/api/tv-channels/{}/acestreams")
 EXPORTER_PORT = 9101
 
 active_streams_by_channel = Gauge("active_streams_by_channel", "Número de streams activos por canal", ["channel_name"])
-stream_cache = {}
+acestream_to_channel = {}  # acestream_id → channel_name
+
 stream_id_regex = re.compile(r'clients_per_stream\{[^}]*stream_ID="([a-f0-9]+)"[^}]*\} ([0-9]+)')
 
-def get_channel_name(stream_id):
-    if stream_id in stream_cache:
-        print(f"[Cache] Found cached channel name for stream ID {stream_id}")
-        return stream_cache[stream_id]
+def build_acestream_mapping():
+    global acestream_to_channel
+    print("[Cache] Refreshing acestream-to-channel map...")
 
     try:
-        print(f"[API] Looking up channel for stream ID {stream_id}")
-        resp = requests.get(CHANNEL_LOOKUP_URL, params={"id": stream_id}, timeout=2)
-        print(f"[API] Response status: {resp.status_code}")
-        if resp.status_code == 200:
-            data = resp.json()
-            print(f"[API] Response JSON: {data}")
-            matches = data.get("matches", [])
-            if matches and "channel" in matches[0]:
-                name = matches[0]["channel"].get("name", f"unknown_{stream_id[:6]}")
-            else:
-                name = f"unknown_{stream_id[:6]}"
-            stream_cache[stream_id] = name
-            return name
-        else:
-            print(f"[API] Non-200 response for stream ID {stream_id}")
-    except Exception as e:
-        print(f"[!] Error getting channel for ID {stream_id}: {e}")
+        resp = requests.get(CHANNELS_URL, timeout=5)
+        if resp.status_code != 200:
+            print(f"[!] Failed to fetch channels (status {resp.status_code})")
+            return
 
-    return f"unknown_{stream_id[:6]}"
+        channels = resp.json()
+        mapping = {}
+
+        for channel in channels:
+            chan_id = channel.get("id")
+            chan_name = channel.get("name", f"unknown_{chan_id}")
+            if not chan_id:
+                continue
+
+            url = ACESTREAMS_URL_TEMPLATE.format(chan_id)
+            try:
+                ace_resp = requests.get(url, timeout=3)
+                if ace_resp.status_code == 200:
+                    ace_ids = ace_resp.json()
+                    for ace_id in ace_ids:
+                        mapping[ace_id] = chan_name
+            except Exception as e:
+                print(f"[!] Error fetching acestreams for channel {chan_id}: {e}")
+
+        acestream_to_channel = mapping
+        print(f"[Cache] Mapping complete with {len(acestream_to_channel)} entries.")
+
+    except Exception as e:
+        print(f"[!] Error refreshing channel cache: {e}")
+
+def get_channel_name_from_stream_id(stream_id):
+    return acestream_to_channel.get(stream_id, f"unknown_{stream_id[:6]}")
 
 def collect_and_export():
+    refresh_interval = 60 * 5  # refresh channel map every 5 minutes
+    last_refresh = 0
+
     while True:
+        now = time.time()
+        if now - last_refresh > refresh_interval or not acestream_to_channel:
+            build_acestream_mapping()
+            last_refresh = now
+
         try:
-            print(f"[Fetch] Requesting metrics from MTail: {MTAIL_METRICS_URL}")
-            resp = requests.get(MTAIL_METRICS_URL)
+            print("[Fetch] Requesting MTail metrics...")
+            resp = requests.get(MTAIL_METRICS_URL, timeout=5)
             active_streams_by_channel.clear()
+
             if resp.status_code != 200:
                 print(f"[!] Failed to fetch metrics (HTTP {resp.status_code})")
                 time.sleep(10)
                 continue
 
-            print("[Fetch] Metrics response OK")
             body = resp.text
-            print("[Fetch] Response body snippet:")
-            print("\n".join(body.splitlines()[:10]))  # Print first 10 lines for preview
-
             matches = stream_id_regex.findall(body)
-            print(f"[Parse] Found {len(matches)} stream matches")
+            print(f"[Parse] Found {len(matches)} stream entries.")
 
-            if not matches:
-                print("[Parse] No gauge_clients_per_stream matches found.")
-            else:
-                counts = defaultdict(int)
-                for stream_id, clients in matches:
-                    print(f"[Parse] Found stream ID {stream_id} with {clients} clients")
-                    channel_name = get_channel_name(stream_id)
-                    print(f"[Metric] Mapping stream ID {stream_id} to channel '{channel_name}'")
-                    counts[channel_name] += int(clients)
+            counts = defaultdict(int)
+            for stream_id, clients in matches:
+                channel_name = get_channel_name_from_stream_id(stream_id)
+                counts[channel_name] += int(clients)
 
-                print("[Prometheus] Exporting metrics per channel:")
-                for channel, count in counts.items():
-                    print(f"    - {channel}: {count} active clients")
-                    active_streams_by_channel.labels(channel).set(count)
+            for channel, count in counts.items():
+                print(f"[Metric] Channel: {channel}, Clients: {count}")
+                active_streams_by_channel.labels(channel).set(count)
 
         except Exception as e:
-            print(f"[!] Error reading or exporting metrics: {e}")
+            print(f"[!] Error during metric fetch/export: {e}")
 
         time.sleep(10)
 
 if __name__ == "__main__":
-    print(f"[Start] Exporter starting on port {EXPORTER_PORT}...")
+    print(f"[Start] Exporter running on port {EXPORTER_PORT}")
     start_http_server(EXPORTER_PORT)
     collect_and_export()
