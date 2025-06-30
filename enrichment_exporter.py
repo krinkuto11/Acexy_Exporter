@@ -25,10 +25,17 @@ def build_acestream_mapping():
             print(f"[!] Failed to fetch channels (status {resp.status_code})")
             return
 
-        channels = resp.json()
+        raw = resp.json()
+        channels = raw.get("channels", [])
+        if not isinstance(channels, list):
+            print("[!] Invalid format: 'channels' key is missing or not a list.")
+            return
+
         mapping = {}
 
         for channel in channels:
+            if not isinstance(channel, dict):
+                continue
             chan_id = channel.get("id")
             chan_name = channel.get("name", f"unknown_{chan_id}")
             if not chan_id:
