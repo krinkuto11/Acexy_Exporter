@@ -13,63 +13,62 @@ EXPORTER_PORT = 9101
 active_streams_by_channel = Gauge("active_streams_by_channel", "Número de streams activos por canal", ["channel_name"])
 acestream_to_channel = {}  # acestream_id → channel_name
 
-stream_id_regex = re.compile(r'clients_per_stream\{[^}]*stream_ID="([a-f0-9]{40})"[^}]*\} ([0-9]+)')
+stream_id_regex = re.compile(r'clients_per_stream\{[^}]*stream_ID="([a-f0-9]{40})"[^}]*} ([0-9]+)')
 
 def build_acestream_mapping():
     global acestream_to_channel
     print("[Cache] Refreshing acestream-to-channel map...")
 
+    page = 1
+    mapping = {}
+
     try:
-        resp = requests.get(CHANNELS_URL, timeout=5)
-        if resp.status_code != 200:
-            print(f"[!] Failed to fetch channels (status {resp.status_code})")
-            return
+        while True:
+            paged_url = f"{CHANNELS_URL}?page={page}"
+            print(f"[Fetch] Getting channels from: {paged_url}")
+            resp = requests.get(paged_url, timeout=5)
+            if resp.status_code != 200:
+                print(f"[!] Failed to fetch channels page {page}")
+                break
 
-        raw = resp.json()
-        channels = raw.get("channels", [])
-        if not isinstance(channels, list):
-            print("[!] Invalid format: 'channels' key is missing or not a list.")
-            return
+            data = resp.json()
+            channels = data.get("channels", [])
+            if not channels:
+                break
 
-        mapping = {}
+            for channel in channels:
+                chan_id = channel.get("id")
+                chan_name = channel.get("name", f"unknown_{chan_id}")
+                if not chan_id:
+                    continue
 
-        for channel in channels:
-            if not isinstance(channel, dict):
-                continue
-            chan_id = channel.get("id")
-            chan_name = channel.get("name", f"unknown_{chan_id}")
-            if not chan_id:
-                continue
-
-            url = ACESTREAMS_URL_TEMPLATE.format(chan_id)
-            try:
-                ace_resp = requests.get(url, timeout=3)
-                if ace_resp.status_code == 200:
-                    ace_data = ace_resp.json()
-                    ace_list = ace_data.get("acestreams", [])
-                    if isinstance(ace_list, list):
+                acestreams_url = ACESTREAMS_URL_TEMPLATE.format(chan_id)
+                try:
+                    ace_resp = requests.get(acestreams_url, timeout=3)
+                    if ace_resp.status_code == 200:
+                        ace_data = ace_resp.json()
+                        ace_list = ace_data.get("acestreams", [])
                         for stream in ace_list:
                             ace_id = stream.get("id")
                             if ace_id:
                                 mapping[ace_id.lower()] = chan_name
-                    else:
-                        print(f"[!] Unexpected acestreams format for channel {chan_name}: {ace_data}")
-            except Exception as e:
-                print(f"[!] Error fetching acestreams for channel {chan_id}: {e}")
+                except Exception as e:
+                    print(f"[!] Error fetching acestreams for channel {chan_id}: {e}")
 
-        acestream_to_channel = mapping
-        print("[Debug] Example acestream cache entries:")
-        for i, (k, v) in enumerate(acestream_to_channel.items()):
-            print(f"    - {k} → {v}")
-            if i >= 10:
+            if page >= data.get("total_pages", page):  # done!
                 break
 
+            page += 1
+
+        acestream_to_channel = mapping
         print(f"[Cache] Mapping complete with {len(acestream_to_channel)} entries.")
 
     except Exception as e:
-        print(f"[!] Error refreshing channel cache: {e}")
+        print(f"[!] Error building acestream cache: {e}")
+
 
 def get_channel_name_from_stream_id(stream_id):
+    print(f"Probando a matchear {stream_id}")
     return acestream_to_channel.get(stream_id, f"unknown_{stream_id[:6]}")
 
 def collect_and_export():
