@@ -11,7 +11,7 @@ EXPORTER_PORT = 9101
 
 active_streams_by_channel = Gauge("active_streams_by_channel", "Número de streams activos por canal", ["channel_name"])
 stream_cache = {}
-stream_id_regex = re.compile(r'gauge_clients_per_stream\{stream_ID="([a-f0-9]+)"\} ([0-9]+)')
+stream_id_regex = re.compile(r'clients_per_stream\{[^}]*stream_ID="([a-f0-9]+)"[^}]*\} ([0-9]+)')
 
 def get_channel_name(stream_id):
     if stream_id in stream_cache:
