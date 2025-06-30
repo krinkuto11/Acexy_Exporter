@@ -5,4 +5,4 @@ COPY enrichment_exporter.py .
 
 RUN pip install --no-cache-dir prometheus_client requests
 
-CMD ["python", "enrichment_exporter.py"]
+CMD ["python", "-u", "enrichment_exporter.py"]

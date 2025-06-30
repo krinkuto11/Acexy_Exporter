@@ -3,9 +3,10 @@ import re
 import requests
 from prometheus_client import start_http_server, Gauge
 from collections import defaultdict
+import os
 
-MTAIL_METRICS_URL = "http://localhost:3903/metrics"
-CHANNEL_LOOKUP_URL = "http://192.168.20.3:8000/api/tv-channels/find-matches"
+MTAIL_METRICS_URL = os.environ.get("MTAIL_METRICS_URL","http://localhost:3903/metrics")
+CHANNEL_LOOKUP_URL = os.environ.get("CHANNEL_LOOKUP_URL",   "http://192.168.20.3:8000/api/tv-channels/find-matches")
 EXPORTER_PORT = 9101
 
 active_streams_by_channel = Gauge("active_streams_by_channel", "Número de streams activos por canal", ["channel_name"])
