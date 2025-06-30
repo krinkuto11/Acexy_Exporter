@@ -46,8 +46,11 @@ def build_acestream_mapping():
                 ace_resp = requests.get(url, timeout=3)
                 if ace_resp.status_code == 200:
                     ace_ids = ace_resp.json()
-                    for ace_id in ace_ids:
-                        mapping[ace_id] = chan_name
+                    if isinstance(ace_ids, list):
+                        for ace_id in ace_ids:
+                            mapping[ace_id.lower()] = chan_name
+                    else:
+                        print(f"[!] Unexpected acestream format for channel {chan_name}: {ace_ids}")
             except Exception as e:
                 print(f"[!] Error fetching acestreams for channel {chan_id}: {e}")
 
