@@ -52,6 +52,12 @@ def build_acestream_mapping():
                 print(f"[!] Error fetching acestreams for channel {chan_id}: {e}")
 
         acestream_to_channel = mapping
+        print("[Debug] Example acestream cache entries:")
+        for i, (k, v) in enumerate(acestream_to_channel.items()):
+            print(f"    - {k} → {v}")
+            if i >= 10:
+                break
+
         print(f"[Cache] Mapping complete with {len(acestream_to_channel)} entries.")
 
     except Exception as e:
