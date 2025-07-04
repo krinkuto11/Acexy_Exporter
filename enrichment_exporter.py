@@ -14,7 +14,7 @@ active_streams_by_channel = Gauge("active_streams_by_channel", "Número de strea
 acestream_to_channel = {}  # acestream_id → channel_name
 streams_by_user = Gauge("streams_by_user", "Número de streams por usuario y canal", ["user", "channel_name"])
 stream_id_regex = re.compile(r'clients_per_stream\{[^}]*stream_ID="([a-f0-9]{40})"[^}]*} ([0-9]+)')
-stream_user_regex = re.compile(r'stream_by_user\{[^}]*user="([^"]+)",stream_ID="([a-f0-9]{40})"[^}]*\} ([0-9]+)')
+stream_user_regex = re.compile(r'stream_by_user\{[^}]*stream_ID="(?P<stream_id>[a-f0-9]{40})"[^}]*user="(?P<user>[^"]+)"[^}]*\} (?P<count>[0-9]+)')
 
 def build_acestream_mapping():
     global acestream_to_channel
@@ -109,10 +109,14 @@ def collect_and_export():
             print(f"[Parse] Found {len(user_matches)} user stream entries.")
 
             streams_by_user.clear()
-            for user, stream_id, count in user_matches:
+            for match in user_matches:
+                user = match.group("user")
+                stream_id = match.group("stream_id")
+                count = match.group("count")
                 channel_name = get_channel_name_from_stream_id(stream_id)
                 print(f"[UserMetric] User: {user}, Channel: {channel_name}, Clients: {count}")
                 streams_by_user.labels(user=user, channel_name=channel_name).set(int(count))
+
 
 
         except Exception as e:
