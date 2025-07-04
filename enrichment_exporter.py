@@ -105,10 +105,9 @@ def collect_and_export():
                 print(f"[Metric] Channel: {channel}, Clients: {count}")
                 active_streams_by_channel.labels(channel).set(count)
 
-            user_matches = stream_user_regex.findall(body)
-            print(f"[Parse] Found {len(user_matches)} user stream entries.")
-
             streams_by_user.clear()
+            user_matches = stream_user_regex.finditer(body)
+            print("[Parse] Found user stream entries.")
             for match in user_matches:
                 user = match.group("user")
                 stream_id = match.group("stream_id")
@@ -116,6 +115,7 @@ def collect_and_export():
                 channel_name = get_channel_name_from_stream_id(stream_id)
                 print(f"[UserMetric] User: {user}, Channel: {channel_name}, Clients: {count}")
                 streams_by_user.labels(user=user, channel_name=channel_name).set(int(count))
+
 
 
 
