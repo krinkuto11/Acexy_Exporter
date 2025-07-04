@@ -108,14 +108,23 @@ def collect_and_export():
             streams_by_user.clear()
             user_matches = stream_user_regex.finditer(body)
             print("[Parse] Found user stream entries.")
+            user_channel_counts = defaultdict(int)
+
             for match in user_matches:
                 user = match.group("user")
                 stream_id = match.group("stream_id")
-                count = match.group("count")
+                count = int(match.group("count"))
                 channel_name = get_channel_name_from_stream_id(stream_id)
-                print(f"[UserMetric] User: {user}, Channel: {channel_name}, Clients: {count}")
-                streams_by_user.labels(user=user, channel_name=channel_name).set(int(count))
 
+                key = (user, channel_name)
+                # Queremos el máximo de todos los streams activos de ese user para ese canal
+                user_channel_counts[key] = max(user_channel_counts[key], count)
+
+            # Ahora exportamos solo una serie por (user, channel), con el máximo valor observado
+            for (user, channel_name), count in user_channel_counts.items():
+                if count > 0:
+                    print(f"[UserMetric] User: {user}, Channel: {channel_name}, Clients: {count}")
+                    streams_by_user.labels(user=user, channel_name=channel_name).set(count)
 
 
 
