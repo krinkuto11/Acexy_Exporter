@@ -12,8 +12,9 @@ EXPORTER_PORT = 9101
 
 active_streams_by_channel = Gauge("active_streams_by_channel", "Número de streams activos por canal", ["channel_name"])
 acestream_to_channel = {}  # acestream_id → channel_name
-
+streams_by_user = Gauge("streams_by_user", "Número de streams por usuario y canal", ["user", "channel_name"])
 stream_id_regex = re.compile(r'clients_per_stream\{[^}]*stream_ID="([a-f0-9]{40})"[^}]*} ([0-9]+)')
+stream_user_regex = re.compile(r'stream_by_user\{[^}]*user="([^"]+)",stream_ID="([a-f0-9]{40})"[^}]*\} ([0-9]+)')
 
 def build_acestream_mapping():
     global acestream_to_channel
@@ -103,6 +104,16 @@ def collect_and_export():
             for channel, count in counts.items():
                 print(f"[Metric] Channel: {channel}, Clients: {count}")
                 active_streams_by_channel.labels(channel).set(count)
+
+            user_matches = stream_user_regex.findall(body)
+            print(f"[Parse] Found {len(user_matches)} user stream entries.")
+
+            streams_by_user.clear()
+            for user, stream_id, count in user_matches:
+                channel_name = get_channel_name_from_stream_id(stream_id)
+                print(f"[UserMetric] User: {user}, Channel: {channel_name}, Clients: {count}")
+                streams_by_user.labels(user=user, channel_name=channel_name).set(int(count))
+
 
         except Exception as e:
             print(f"[!] Error during metric fetch/export: {e}")
