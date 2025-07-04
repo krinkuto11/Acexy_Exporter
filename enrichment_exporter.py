@@ -11,9 +11,12 @@ ACESTREAMS_URL_TEMPLATE = os.environ.get("ACESTREAMS_URL_TEMPLATE", "http://192.
 EXPORTER_PORT = 9101
 
 active_streams_by_channel = Gauge("active_streams_by_channel", "Número de streams activos por canal", ["channel_name"])
-acestream_to_channel = {}  # acestream_id → channel_name
+stream_by_user_mapped = Gauge("stream_by_user", "Relación entre usuario y canal", ["user", "channel_name"])
 
 stream_id_regex = re.compile(r'clients_per_stream\{[^}]*stream_ID="([a-f0-9]{40})"[^}]*} ([0-9]+)')
+stream_by_user_regex = re.compile(r'stream_by_user\{user="([^"]+)",stream_ID="([a-f0-9]{40})"} ([0-9]+)')
+
+acestream_to_channel = {}  # acestream_id → channel_name
 
 def build_acestream_mapping():
     global acestream_to_channel
