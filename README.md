@@ -20,6 +20,42 @@ active_streams_by_channel{channel_name="<Channel Name>"} <Gauge>
 ```
 streams_by_user{channel_name="<Channel Name",user="<User>"} <Gauge>
 ```
+## Deployment
+Use the following docker-compose project:
+```
+version: '3.8'
+
+services:
+  mtail:
+    image: tgbyte/mtail:latest
+    container_name: mtail
+    ports:
+      - "3903:3903"
+    volumes:
+      - ${CONFIG_DIR}/mtail:/progs
+      - ${LOG_DIR}/acexy:/logs
+      - ${CONFIG_DIR}/mtail/errlogs:/tmp
+    command: >
+      --progs /progs/stream_stats.mtail
+      --logs /logs/acexy.log
+      --port 3903
+    environment:
+      - PGID=1000
+      - PUID=1000
+
+
+  enrichment_exporter:
+    image: ghcr.io/krinkuto11/enrichment_exporter:latest
+    container_name: enrichment_exporter
+    ports:
+      - "9101:9101"
+    environment:
+      - MTAIL_METRICS_URL=http://mtail:3903/metrics
+      - CHANNEL_LOOKUP_URL=${ACESTREAM_SCRAPER_URL}/api/tv-channels/find-matches
+      - PGID=1000
+      - PUID=1000
+```
+
 ## MTail Config
 
 The MTail Config used to get this metrics from the Acexy logs parses the following events:
