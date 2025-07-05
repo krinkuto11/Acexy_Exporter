@@ -2,7 +2,7 @@
 ![enriched-light](https://github.com/user-attachments/assets/22658f9e-773e-48fc-83f6-cc719868dfed)
 
 > [!WARNING]  
-> For this to work my fork of Acexy has to be used as the main one doesn't expose logs in a file
+> For this to work my fork of Acexy has to be used as the main one doesn't expose logs in a file. 
 > You can get it here https://github.com/krinkuto11/acexy
 
 This Middleware takes these two metrics from an MTail export with Prometheus format...
@@ -28,11 +28,11 @@ The MTail Config used to get this metrics from the Acexy logs parses the followi
 ```
 YYYY/MM/DD HH:MM:SS INFO Client connected stream="{id: <Stream ID>}" clients=<Client Number> user=<User>
 ```
-**Stream Stop***
+**Stream Stop:**
 ```
 YYYY/MM/DD HH:MM:SS INFO Client stopped stream="{id: <Stream ID>}" clients=<Client Number> user=<User>
 ```
-**Stream Error (Stream stops)**
+**Stream Error (Stream stops):**
 ```
 YYYY/MM/DD HH:MM:SS ERROR Failed to start stream stream="{id: <Stream ID>}" error="<Error message>" user=<User>
 ```
