@@ -5,7 +5,7 @@ import os
 from prometheus_client import start_http_server, Gauge
 from collections import defaultdict
 
-MTAIL_METRICS_URL = os.environ.get("MTAIL_METRICS_URL", "http://localhost:3903/metrics")
+ACEXY_API = os.environ.get("ACEXY_API", "http://localhost:8080/ace/status")
 CHANNELS_URL = os.environ.get("CHANNELS_URL", "http://192.168.20.3:8000/api/tv-channels/")
 ACESTREAMS_URL_TEMPLATE = os.environ.get("ACESTREAMS_URL_TEMPLATE", "http://192.168.20.3:8000/api/tv-channels/{}/acestreams")
 EXPORTER_PORT = 9101
@@ -73,7 +73,7 @@ def get_channel_name_from_stream_id(stream_id):
     return acestream_to_channel.get(stream_id, f"unknown_{stream_id[:6]}")
 
 def collect_and_export():
-    refresh_interval = 60 * 5  # refresh channel map every 5 minutes
+    refresh_interval = 60 * 5
     last_refresh = 0
 
     while True:
@@ -83,53 +83,35 @@ def collect_and_export():
             last_refresh = now
 
         try:
-            print("[Fetch] Requesting MTail metrics...")
-            resp = requests.get(MTAIL_METRICS_URL, timeout=5)
+            print("[Fetch] Requesting usage data from new API...")
+            resp = requests.get(ACEXY_API, timeout=5)
+            data = resp.json()
+
             active_streams_by_channel.clear()
-
-            if resp.status_code != 200:
-                print(f"[!] Failed to fetch metrics (HTTP {resp.status_code})")
-                time.sleep(10)
-                continue
-
-            body = resp.text
-            matches = stream_id_regex.findall(body)
-            print(f"[Parse] Found {len(matches)} stream entries.")
-
-            counts = defaultdict(int)
-            for stream_id, clients in matches:
-                channel_name = get_channel_name_from_stream_id(stream_id)
-                counts[channel_name] += int(clients)
-
-            for channel, count in counts.items():
-                print(f"[Metric] Channel: {channel}, Clients: {count}")
-                active_streams_by_channel.labels(channel).set(count)
-
             streams_by_user.clear()
-            user_matches = stream_user_regex.finditer(body)
-            print("[Parse] Found user stream entries.")
+
+            users_by_stream = data.get("users_by_stream", {})
             user_channel_counts = defaultdict(int)
 
-            for match in user_matches:
-                user = match.group("user")
-                stream_id = match.group("stream_id")
-                count = int(match.group("count"))
+            for raw_stream_id, users in users_by_stream.items():
+                match = re.search(r'[a-f0-9]{40}', raw_stream_id)
+                if not match:
+                    continue
+                stream_id = match.group(0)
                 channel_name = get_channel_name_from_stream_id(stream_id)
 
-                key = (user, channel_name)
-                # Queremos el máximo de todos los streams activos de ese user para ese canal
-                user_channel_counts[key] = max(user_channel_counts[key], count)
+                active_streams_by_channel.labels(channel_name).set(len(users))
 
-            # Ahora exportamos solo una serie por (user, channel), con el máximo valor observado
+                for user in users:
+                    key = (user, channel_name)
+                    user_channel_counts[key] = max(user_channel_counts[key], 1)
+
             for (user, channel_name), count in user_channel_counts.items():
-                if count > 0:
-                    print(f"[UserMetric] User: {user}, Channel: {channel_name}, Clients: {count}")
-                    streams_by_user.labels(user=user, channel_name=channel_name).set(count)
-
-
+                streams_by_user.labels(user=user, channel_name=channel_name).set(count)
+                print(f"[UserMetric] User: {user}, Channel: {channel_name}, Clients: {count}")
 
         except Exception as e:
-            print(f"[!] Error during metric fetch/export: {e}")
+            print(f"[!] Error while collecting usage data: {e}")
 
         time.sleep(10)
 

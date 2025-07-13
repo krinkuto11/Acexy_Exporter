@@ -1,23 +1,6 @@
 version: '3.8'
 
 services:
-  mtail:
-    image: tgbyte/mtail:latest
-    container_name: mtail
-    ports:
-      - "3903:3903"
-    volumes:
-      - ${CONFIG_DIR}/mtail:/progs
-      - ${LOG_DIR}/acexy:/logs
-      - ${CONFIG_DIR}/mtail/errlogs:/tmp
-    command: >
-      --progs /progs/stream_stats.mtail
-      --logs /logs/acexy.log
-      --port 3903
-    environment:
-      - PGID=1000
-      - PUID=1000
-
 
   enrichment_exporter:
     image: ghcr.io/krinkuto11/enrichment_exporter:latest
@@ -25,7 +8,7 @@ services:
     ports:
       - "9101:9101"
     environment:
-      - MTAIL_METRICS_URL=http://mtail:3903/metrics
       - CHANNEL_LOOKUP_URL=${ACESTREAM_SCRAPER_URL}/api/tv-channels/find-matches
       - PGID=1000
       - PUID=1000
+      - ACEXY_API=http://localhost:8080/ace/status
