@@ -106,8 +106,6 @@ def collect_and_export():
                     key = (user, channel_name)
                     user_channel_counts[key] = max(user_channel_counts[key], 1)
 
-            for channel_name, total_users in channel_user_counts.items():
-                active_streams_by_channel.labels(channel_name).set(total_users)
 
             for (user, channel_name), count in user_channel_counts.items():
                 streams_by_user.labels(user=user, channel_name=channel_name).set(count)
