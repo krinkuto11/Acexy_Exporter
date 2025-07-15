@@ -1,17 +1,15 @@
-# Enriching Middleware for Acexy Metrics
-![enriched-light](https://github.com/user-attachments/assets/22658f9e-773e-48fc-83f6-cc719868dfed)
+# Acexy Exporter and Enricher for Prometheus Metrics
+<img width="621" height="221" alt="diagram_exporter" src="https://github.com/user-attachments/assets/40dd6e0e-9adb-428a-a913-0a585441913e" />
 
 > [!WARNING]  
-> For this to work my fork of Acexy has to be used as the main one doesn't expose logs in a file. 
+> The main Acexy fork doesn't expose stream IDs and Users. Until this is added to the main branch you must use my own fork.
 > You can get it here https://github.com/krinkuto11/acexy
 
-This Middleware takes these two metrics from an MTail export with Prometheus format...
+This Middleware receives the stats from the API in the following format
 ```
-clients_per_stream{prog="stream_stats.mtail",stream_ID="<Stream ID>"} <Gauge>
+{"streams":1,"users":["user1","user2"],"users_by_stream":{"{id: <id>}":["user1","user2"]}}```
 ```
-```
-stream_by_user{prog="stream_stats.mtail",stream_ID="<Stream ID",user="<User>"} <Gauge>
-```
+
 ...then queries the Acestream Scraper API and gets the TV Channel that the Stream is part of.
 The resulting metrics are:
 ```
@@ -26,91 +24,18 @@ Use the following docker-compose project:
 version: '3.8'
 
 services:
-  mtail:
-    image: tgbyte/mtail:latest
-    container_name: mtail
-    ports:
-      - "3903:3903"
-    volumes:
-      - ${CONFIG_DIR}/mtail:/progs
-      - ${LOG_DIR}/acexy:/logs
-      - ${CONFIG_DIR}/mtail/errlogs:/tmp
-    command: >
-      --progs /progs/stream_stats.mtail
-      --logs /logs/acexy.log
-      --port 3903
-    environment:
-      - PGID=1000
-      - PUID=1000
-
-
   enrichment_exporter:
     image: ghcr.io/krinkuto11/enrichment_exporter:latest
     container_name: enrichment_exporter
     ports:
       - "9101:9101"
     environment:
-      - MTAIL_METRICS_URL=http://mtail:3903/metrics
       - CHANNEL_LOOKUP_URL=${ACESTREAM_SCRAPER_URL}/api/tv-channels/find-matches
       - PGID=1000
       - PUID=1000
+      - ACEXY_API=${ACEXY_URL}/ace/status
 ```
 
-## MTail Config
-
-The MTail Config used to get this metrics from the Acexy logs parses the following events:
-
-**Stream Start:**
-```
-YYYY/MM/DD HH:MM:SS INFO Client connected stream="{id: <Stream ID>}" clients=<Client Number> user=<User>
-```
-**Stream Stop:**
-```
-YYYY/MM/DD HH:MM:SS INFO Client stopped stream="{id: <Stream ID>}" clients=<Client Number> user=<User>
-```
-**Stream Error (Stream stops):**
-```
-YYYY/MM/DD HH:MM:SS ERROR Failed to start stream stream="{id: <Stream ID>}" error="<Error message>" user=<User>
-```
-Config file `stream_stats.mtail`:
-```MTail
-# Exported metrics
-gauge clients_per_stream by stream_ID
-gauge stream_by_user by user, stream_ID
-
-# Hidden metric to store the most recent client count per stream
-hidden gauge last_clients_count by stream_ID
-
-# Timestamp parser decorator (YYYY/MM/DD HH:MM:SS)
-def logtime {
-  /^(?P<ts>\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2})/ {
-    strptime($ts, "2006/01/02 15:04:05")
-    next
-  }
-}
-
-@logtime {
-  # Cliente se conecta a un stream
-  /Client connected stream="\{id: (?P<stream_ID>[a-f0-9]+)\}" clients=(?P<clients>\d+) user=(?P<user>\w+)/ {
-    clients_per_stream[$stream_ID] = int($clients)
-    last_clients_count[$stream_ID] = int($clients)
-    stream_by_user[$user][$stream_ID] = 1
-  }
-
-  # Cliente se desconecta de un stream
-  /Client stopped stream="\{id: (?P<stream_ID>[a-f0-9]+)\}" clients=(?P<clients>\d+) user=(?P<user>\w+)/ {
-    clients_per_stream[$stream_ID] = int($clients)
-    last_clients_count[$stream_ID] = int($clients)
-    stream_by_user[$user][$stream_ID] = 0
-  }
-  # Hay un error en el stream
-  /Failed to start stream stream="\{id: (?P<stream_ID>[a-f0-9]+)\}".*user=(?P<user>\S+)/ {
-    clients_per_stream[$stream_ID] = 0
-    last_clients_count[$stream_ID] = 0
-    stream_by_user[$user][$stream_ID] = 0
-  }  
-}
-```
 
 
 
