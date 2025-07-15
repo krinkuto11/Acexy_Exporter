@@ -6,8 +6,8 @@ from prometheus_client import start_http_server, Gauge
 from collections import defaultdict
 
 ACEXY_API = os.environ.get("ACEXY_API", "http://localhost:8080/ace/status")
-CHANNELS_URL = os.environ.get("CHANNELS_URL", "http://192.168.20.3:8000/api/tv-channels/")
-ACESTREAMS_URL_TEMPLATE = os.environ.get("ACESTREAMS_URL_TEMPLATE", "http://192.168.20.3:8000/api/tv-channels/{}/acestreams")
+CHANNELS_URL = os.environ.get("CHANNELS_URL", "http://localhost:8000/api/tv-channels/")
+ACESTREAMS_URL_TEMPLATE = os.environ.get("ACESTREAMS_URL_TEMPLATE", "http://localhost:8000/api/tv-channels/{}/acestreams")
 EXPORTER_PORT = 9101
 
 active_streams_by_channel = Gauge("active_streams_by_channel", "Número de streams activos por canal", ["channel_name"])
@@ -100,7 +100,7 @@ def collect_and_export():
                 stream_id = match.group(0)
                 channel_name = get_channel_name_from_stream_id(stream_id)
 
-                active_streams_by_channel.labels(channel_name).set(len(users))
+                active_streams_by_channel.labels(channel_name).inc(1)
 
                 for user in users:
                     key = (user, channel_name)
@@ -109,6 +109,7 @@ def collect_and_export():
             for (user, channel_name), count in user_channel_counts.items():
                 streams_by_user.labels(user=user, channel_name=channel_name).set(count)
                 print(f"[UserMetric] User: {user}, Channel: {channel_name}, Clients: {count}")
+
 
         except Exception as e:
             print(f"[!] Error while collecting usage data: {e}")
